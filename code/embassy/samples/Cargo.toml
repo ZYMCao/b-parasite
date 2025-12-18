@@ -50,6 +50,13 @@ doctest = false
 bench = false
 
 [[bin]]
+name = "pwm"
+path = "src/bin/pwm.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
 name = "input"
 path = "src/bin/input.rs"
 test = false
