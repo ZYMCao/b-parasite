@@ -62,3 +62,10 @@ path = "src/bin/input.rs"
 test = false
 doctest = false
 bench = false
+
+[[bin]]
+name = "mse"
+path = "src/bin/moisture_sensor_excitation.rs"
+test = false
+doctest = false
+bench = false

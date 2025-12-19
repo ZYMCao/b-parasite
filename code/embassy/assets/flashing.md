@@ -1,4 +1,4 @@
-## The previous steps to Flash the Zephyr (written in C) Firmware Samples
+## Flash the Zephyr (written in C) Firmware Samples
 
 ### Overview
 Nordic's nRF52840 (or nRF52833) system-on-a-chip (SoC) sits at the heart of b-parasites. It's an ARM Cortex M4, and it's programmed and debug via the Serial Wire Debug (SWD) interface.
@@ -66,3 +66,20 @@ There are many other ways to flash the samples to the board. Issue #43 discusses
 Using a blackmagic probe, blog post
 Using a bluepill
 The nrfmicro Wiki uses the same E73 module as us, and has a great compilation of methods of flashing the firmware, including using a Raspberry Pi.
+
+
+## Flash the Embassy (written in Rust) Firmware Samples
+### Prerequisites
+Make sure Cargo and probe-rs are available. SWD configurations are identical to Zephyr flashing
+
+### Paths
+```
+~/.cargo/bin/cargo
+~/.cargo/bin/probe-rs
+~/.cargo/bin/rustc
+```
+
+### Run the following command in B-Parasite/code/embassy/samples
+```
+cargo build --release --bin blinky && cargo run --release --bin blinky
+```
