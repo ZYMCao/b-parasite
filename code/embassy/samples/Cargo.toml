@@ -69,3 +69,10 @@ path = "src/bin/moisture_sensor_excitation.rs"
 test = false
 doctest = false
 bench = false
+
+[[bin]]
+name = "srl"
+path = "src/bin/soil_read_loop.rs"
+test = false
+doctest = false
+bench = false
