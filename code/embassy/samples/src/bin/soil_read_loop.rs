@@ -24,7 +24,7 @@ async fn main(_spawner: Spawner) {
     // =========================================================================
     // From nrf-connect: fast_disch on P1.10 (GPIO_ACTIVE_HIGH)
     // Enable fast discharge circuit continuously (as in original C code)
-    let fast_disch = Output::new(p.P1_10, Level::High, OutputDrive::Standard);
+    let _fast_disch = Output::new(p.P1_10, Level::High, OutputDrive::Standard);
 
     // Initialize LED on P0.28 for status indication
     let mut led = Output::new(p.P0_28, Level::Low, OutputDrive::Standard);
@@ -92,11 +92,10 @@ async fn main(_spawner: Spawner) {
 
         // Start PWM with 50% duty cycle
         {
-            let sequencer = SingleSequencer::new(&mut pwm, &pwm_sequence, seq_config.clone());
+            let sequencer = SingleSequencer::new(&mut pwm, &pwm_sequence, seq_config.clone()); // ToDo: not sure about cloning inside the loop
             match sequencer.start(SingleSequenceMode::Infinite) {
                 Ok(()) => {
-                    // PWM is now running, wait for stabilization (match C version timing)
-                    Timer::after_millis(500).await;
+                    Timer::after_millis(30).await;
 
                     // =========================================================================
                     // ADC Reading Phase
@@ -119,9 +118,6 @@ async fn main(_spawner: Spawner) {
                     // Log data in format matching original C code
                     // C version logs: battery_voltage(V);soil_adc_raw (not converted)
                     info!("{=f32};{=i16}", battery_voltage_v, soil_raw);
-
-                    // Continue PWM for total of 30ms
-                    Timer::after_millis(20).await;
                 }
                 Err(e) => {
                     error!("Failed to start PWM sequencer: {:?}", e);
@@ -140,12 +136,12 @@ async fn main(_spawner: Spawner) {
             let zero_sequencer = SingleSequencer::new(&mut pwm, &zero_sequence, seq_config.clone());
             match zero_sequencer.start(SingleSequenceMode::Infinite) {
                 Ok(()) => {
-                    // Wait 970ms before next reading (total 1 second cycle)
-                    Timer::after_millis(970).await;
+                    // Wait 470ms before next reading (total 500ms cycle for 2Hz frequency)
+                    Timer::after_millis(470).await;
                 }
                 Err(e) => {
                     error!("Failed to stop PWM: {:?}", e);
-                    Timer::after_millis(970).await;
+                    Timer::after_millis(470).await;
                 }
             }
         }
