@@ -66,7 +66,7 @@ async fn main(_spawner: Spawner) {
     // Battery: channel@2, VDD internal, gain 1/6, reference internal
 
     let mut saadc_config = SaadcConfig::default();
-    saadc_config.resolution = saadc::Resolution::_10BIT; // Match C version (10-bit)
+    saadc_config.resolution = saadc::Resolution::_10BIT; // code/nrf-connect/prstlib/boards/bparasite/bparasite_nrf52840.dts has specified zephyr,resolution = <10>
 
     // Soil moisture channel: P0.03 (AIN1)
     // From C version: zephyr,gain = "ADC_GAIN_1_6", zephyr,reference = "ADC_REF_VDD_1_4"
@@ -90,7 +90,7 @@ async fn main(_spawner: Spawner) {
     saadc.calibrate().await;
     info!("SAADC initialized and calibrated");
 
-    let mut cycle_count = 0;
+    let cycle_count = 0;
 
     info!("Starting main loop - reading soil moisture and battery voltage");
     info!("Format: battery_voltage(V);soil_adc_raw");
