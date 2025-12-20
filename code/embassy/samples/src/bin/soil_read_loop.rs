@@ -19,20 +19,15 @@ bind_interrupts!(struct Irqs {
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
-    info!("=== B-Parasite Soil Read Loop ===");
-    info!("Replicating nrf-connect soil_read_loop functionality with Embassy");
-
     // =========================================================================
     // GPIO Configuration - Fast Discharge Circuit
     // =========================================================================
     // From nrf-connect: fast_disch on P1.10 (GPIO_ACTIVE_HIGH)
     // Enable fast discharge circuit continuously (as in original C code)
     let fast_disch = Output::new(p.P1_10, Level::High, OutputDrive::Standard);
-    info!("Fast discharge circuit enabled on P1.10");
 
     // Initialize LED on P0.28 for status indication
     let mut led = Output::new(p.P0_28, Level::Low, OutputDrive::Standard);
-    info!("LED initialized on P0.28");
 
     // =========================================================================
     // PWM Configuration - Soil Moisture Excitation
@@ -55,8 +50,6 @@ async fn main(_spawner: Spawner) {
     let zero_sequence: [u16; 1] = [0]; // 0% duty cycle (PWM off)
     let mut seq_config = SequenceConfig::default();
     seq_config.refresh = 0; // No additional delays
-
-    info!("PWM configured: 500kHz, 50% duty cycle on P0.05");
 
     // =========================================================================
     // SAADC Configuration - Soil Moisture and Battery Voltage
@@ -88,19 +81,12 @@ async fn main(_spawner: Spawner) {
 
     // Calibrate SAADC
     saadc.calibrate().await;
-    info!("SAADC initialized and calibrated");
-
-    let cycle_count = 0;
-
-    info!("Starting main loop - reading soil moisture and battery voltage");
-    info!("Format: battery_voltage(V);soil_adc_raw");
+    info!("input_voltage;soil_adc_output");
 
     loop {
         // =========================================================================
         // PWM ON Phase - Excite soil moisture sensor
         // =========================================================================
-        // info!("Cycle {}: PWM ON - Exciting soil sensor", cycle_count);
-
         // Blink LED to indicate PWM active
         led.set_high();
 
@@ -121,7 +107,6 @@ async fn main(_spawner: Spawner) {
 
                     let soil_raw = adc_buf[0];
                     let battery_raw = adc_buf[1];
-                    info!("Raw values - Battery: {}, Soil: {}", battery_raw, soil_raw);
 
                     // Convert battery ADC to voltage
                     // From nrf-connect: adc_raw_to_millivolts_dt with gain 1/6, internal reference
@@ -131,18 +116,9 @@ async fn main(_spawner: Spawner) {
                     let battery_voltage_mv = (battery_raw as i32 * 3600) / 1023;
                     let battery_voltage_v = battery_voltage_mv as f32 / 1000.0;
 
-                    // Convert soil ADC to voltage (matching C version's adc_raw_to_millivolts_dt)
-                    // Soil sensor uses VDD/4 reference with gain 1/6
-                    // voltage_mv = (adc_value * vdd_voltage_mv/4 * 6) / (2^resolution - 1)
-                    // For 10-bit resolution: voltage_mv = (adc_value * battery_voltage_mv * 6) / (1023 * 4)
-                    let soil_voltage_mv = (soil_raw as i32 * battery_voltage_mv * 6) / (1023 * 4);
-
                     // Log data in format matching original C code
                     // C version logs: battery_voltage(V);soil_adc_raw (not converted)
                     info!("{=f32};{=i16}", battery_voltage_v, soil_raw);
-
-                    // Also log converted soil voltage for debugging
-                    info!("Soil voltage: {}mV (raw: {})", soil_voltage_mv, soil_raw);
 
                     // Continue PWM for total of 30ms
                     Timer::after_millis(20).await;
@@ -159,8 +135,6 @@ async fn main(_spawner: Spawner) {
         // =========================================================================
         // PWM OFF Phase - Power saving
         // =========================================================================
-        // info!("  PWM OFF - Power saving mode");
-
         // Stop PWM by setting duty cycle to 0
         {
             let zero_sequencer = SingleSequencer::new(&mut pwm, &zero_sequence, seq_config.clone());
