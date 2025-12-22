@@ -157,7 +157,7 @@ async fn main(spawner: Spawner) {
     );
 
     let mut rng = rng::Rng::new(p.RNG, Irqs);
-    let mut sdc_mem = sdc::Mem::<1112>::new();
+    let mut sdc_mem = sdc::Mem::<1120>::new();
     let sdc = unwrap!(build_sdc(sdc_p, &mut rng, &mpsl, &mut sdc_mem));
 
     // Initialize BLE Host

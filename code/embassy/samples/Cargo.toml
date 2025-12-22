@@ -34,7 +34,10 @@ nrf52840 = [
 ]
 
 [profile.release]
-debug = 2
+# debug = 2
+debug = false
+lto = true
+opt-level = "z"
 
 [package.metadata.embassy]
 build = [
