@@ -6,3 +6,4 @@ target/
 Cargo.lock
 code/embassy/demos/
 code/ble2mqtt/log
+.vibe/
