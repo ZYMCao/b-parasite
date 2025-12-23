@@ -256,13 +256,13 @@ async fn main(spawner: Spawner) {
                 .await
             {
                 Ok(_adv) => {
-                    info!("Started BLE advertising");
+                    // info!("Started BLE advertising");
 
                     // Advertise for configured duration
                     Timer::after_millis(3000).await; // 3 seconds advertising
 
                     // Stop advertising (by dropping _adv)
-                    info!("Stopped BLE advertising");
+                    // info!("Stopped BLE advertising");
                 }
                 Err(_e) => {
                     error!("Failed to start advertising");

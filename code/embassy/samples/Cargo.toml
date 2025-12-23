@@ -10,7 +10,7 @@ embassy-nrf = { version = "0.8", features = ["defmt", "nrf52840", "time-driver-r
 embassy-futures = "0.1"
 trouble-host = { version = "0.5", features = ["derive", "scan", "gatt"] }
 nrf-sdc = { version = "0.4", default-features = false, features = ["defmt", "peripheral", "central"] }
-nrf-mpsl = { version = "0.3", default-features = false, features = ["defmt", "critical-section-impl"] }
+nrf-mpsl = { version = "0.3", default-features = false, features = ["defmt"] }
 #trouble-example-apps = { version = "0.1", path = "../../../../TrouBLE/examples/apps", features = ["defmt"] }
 #bt-hci = { version = "0.6", default-features = false, features = ["defmt"] }
 
@@ -20,6 +20,7 @@ defmt-rtt = "1.1"
 static_cell = { version = "2" }
 cortex-m-rt = "0.7"
 panic-probe = { version = "1.0", features = ["print-defmt"] }
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 
 [patch.crates-io]
 nrf-sdc = { git = "https://github.com/alexmoon/nrf-sdc.git", rev = "11d5c3c"}
