@@ -4,9 +4,7 @@
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_nrf::gpio::{Level, Output, OutputDrive};
-use embassy_nrf::pwm::{
-    Config, Prescaler, SequenceConfig, SequencePwm, SingleSequenceMode, SingleSequencer,
-};
+use embassy_nrf::pwm::{Prescaler, SimplePwm};
 use embassy_nrf::saadc::{ChannelConfig, Config as SaadcConfig, Saadc, VddInput};
 use embassy_nrf::{bind_interrupts, saadc};
 use embassy_time::Timer;
@@ -36,20 +34,11 @@ async fn main(_spawner: Spawner) {
     //   pwms = <&pwm0 0 PWM_USEC(2) PWM_POLARITY_NORMAL>;
     //   pulse = <PWM_USEC(1)>;
     // This means: 500kHz frequency, 50% duty cycle on P0.05
-    let mut pwm_config = Config::default();
-    pwm_config.prescaler = Prescaler::Div1; // Prescaler value 1
-    pwm_config.max_duty = 32; // Results in 500kHz frequency (16MHz / 32)
+    let mut pwm = SimplePwm::new_1ch(p.PWM0, p.P0_05);
+    pwm.set_prescaler(Prescaler::Div1); // Prescaler value 1
+    pwm.set_max_duty(32); // Results in 500kHz frequency (16MHz / 32)
 
-    let compare_value = pwm_config.max_duty / 2; // 16 for 50% duty cycle
-
-    // Create PWM on P0.05 (soil moisture excitation pin)
-    let mut pwm = unwrap!(SequencePwm::new_1ch(p.PWM0, p.P0_05, pwm_config));
-
-    // PWM sequences
-    let pwm_sequence: [u16; 1] = [compare_value]; // 50% duty cycle
-    let zero_sequence: [u16; 1] = [0]; // 0% duty cycle (PWM off)
-    let mut seq_config = SequenceConfig::default();
-    seq_config.refresh = 0; // No additional delays
+    let compare_value = 16; // 50% duty cycle (32 / 2)
 
     // =========================================================================
     // SAADC Configuration - Soil Moisture and Battery Voltage
@@ -85,65 +74,47 @@ async fn main(_spawner: Spawner) {
 
     loop {
         // =========================================================================
-        // PWM ON Phase - Excite soil moisture sensor
+        // PWM ON Phase - Excite soil moisture sensor (30ms)
         // =========================================================================
         // Blink LED to indicate PWM active
         led.set_high();
 
         // Start PWM with 50% duty cycle
-        {
-            let sequencer = SingleSequencer::new(&mut pwm, &pwm_sequence, seq_config.clone()); // ToDo: not sure about cloning inside the loop
-            match sequencer.start(SingleSequenceMode::Infinite) {
-                Ok(()) => {
-                    Timer::after_millis(30).await;
+        pwm.set_duty(0, compare_value);
 
-                    // =========================================================================
-                    // ADC Reading Phase
-                    // =========================================================================
-                    // Read both channels
-                    let mut adc_buf = [0; 2]; // [soil, battery]
-                    saadc.sample(&mut adc_buf).await;
+        Timer::after_millis(30).await;
 
-                    let soil_raw = adc_buf[0];
-                    let battery_raw = adc_buf[1];
+        // =========================================================================
+        // ADC Reading Phase
+        // =========================================================================
+        // Read both channels
+        let mut adc_buf = [0; 2]; // [soil, battery]
+        saadc.sample(&mut adc_buf).await;
 
-                    // Convert battery ADC to voltage
-                    // From nrf-connect: adc_raw_to_millivolts_dt with gain 1/6, internal reference
-                    // For nRF52840, internal reference is 0.6V
-                    // With gain 1/6: voltage_mv = (adc_value * 0.6V * 6) / (2^resolution - 1)
-                    // For 10-bit resolution: voltage_mv = (adc_value * 3600) / 1023
-                    let battery_voltage_mv = (battery_raw as i32 * 3600) / 1023;
-                    let battery_voltage_v = battery_voltage_mv as f32 / 1000.0;
+        let soil_raw = adc_buf[0];
+        let battery_raw = adc_buf[1];
 
-                    // Log data in format matching original C code
-                    // C version logs: battery_voltage(V);soil_adc_raw (not converted)
-                    info!("{=f32};{=i16}", battery_voltage_v, soil_raw);
-                }
-                Err(e) => {
-                    error!("Failed to start PWM sequencer: {:?}", e);
-                    Timer::after_millis(30).await;
-                }
-            }
-        }
+        // Convert battery ADC to voltage
+        // From nrf-connect: adc_raw_to_millivolts_dt with gain 1/6, internal reference
+        // For nRF52840, internal reference is 0.6V
+        // With gain 1/6: voltage_mv = (adc_value * 0.6V * 6) / (2^resolution - 1)
+        // For 10-bit resolution: voltage_mv = (adc_value * 3600) / 1023
+        let battery_voltage_mv = (battery_raw as i32 * 3600) / 1023;
+        let battery_voltage_v = battery_voltage_mv as f32 / 1000.0;
+
+        // Log data in format matching original C code
+        // C version logs: battery_voltage(V);soil_adc_raw (not converted)
+        info!("{=f32};{=i16}", battery_voltage_v, soil_raw);
 
         led.set_low();
 
         // =========================================================================
-        // PWM OFF Phase - Power saving
+        // PWM OFF Phase - Power saving (470ms)
         // =========================================================================
         // Stop PWM by setting duty cycle to 0
-        {
-            let zero_sequencer = SingleSequencer::new(&mut pwm, &zero_sequence, seq_config.clone());
-            match zero_sequencer.start(SingleSequenceMode::Infinite) {
-                Ok(()) => {
-                    // Wait 470ms before next reading (total 500ms cycle for 2Hz frequency)
-                    Timer::after_millis(470).await;
-                }
-                Err(e) => {
-                    error!("Failed to stop PWM: {:?}", e);
-                    Timer::after_millis(470).await;
-                }
-            }
-        }
+        pwm.set_duty(0, 0);
+
+        // Wait 470ms before next reading (total 500ms cycle for 2Hz frequency)
+        Timer::after_millis(470).await;
     }
 }
