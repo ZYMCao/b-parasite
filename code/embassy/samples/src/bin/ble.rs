@@ -185,7 +185,11 @@ async fn read_sensors(
 
         led.set_low();
 
-        Ok(SensorData::new(battery_voltage_mv as u16, soil_raw as u16, packet_counter))
+        Ok(SensorData::new(
+            battery_voltage_mv as u16,
+            soil_raw as u16,
+            packet_counter,
+        ))
     }
 }
 
@@ -194,7 +198,8 @@ async fn main(spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
 
     // Initialize MPSL (Multiprotocol Service Layer)
-    let mpsl_p = mpsl::Peripherals::new(p.RTC0, p.TIMER0, p.TEMP, p.PPI_CH19, p.PPI_CH30, p.PPI_CH31);
+    let mpsl_p =
+        mpsl::Peripherals::new(p.RTC0, p.TIMER0, p.TEMP, p.PPI_CH19, p.PPI_CH30, p.PPI_CH31);
     let lfclk_cfg = mpsl::raw::mpsl_clock_lfclk_cfg_t {
         source: mpsl::raw::MPSL_CLOCK_LF_SRC_RC as u8,
         rc_ctiv: mpsl::raw::MPSL_RECOMMENDED_RC_CTIV as u8,
@@ -203,7 +208,9 @@ async fn main(spawner: Spawner) {
         skip_wait_lfclk_started: mpsl::raw::MPSL_DEFAULT_SKIP_WAIT_LFCLK_STARTED != 0,
     };
     static MPSL: StaticCell<MultiprotocolServiceLayer> = StaticCell::new();
-    let mpsl = MPSL.init(unwrap!(MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg)));
+    let mpsl = MPSL.init(unwrap!(MultiprotocolServiceLayer::new(
+        mpsl_p, Irqs, lfclk_cfg
+    )));
     spawner.must_spawn(mpsl_task(&*mpsl));
 
     // Initialize SDC (SoftDevice Controller)
@@ -268,20 +275,15 @@ async fn main(spawner: Spawner) {
         let mut packet_counter: u8 = 0;
         loop {
             // Read sensors
-            let sensor_data = match read_sensors(&mut pwm, &mut saadc, &mut led, packet_counter).await {
-                Ok(data) => {
-                    info!(
-                        "Battery: {}mV, Soil ADC: {}",
-                        data.battery_voltage_mv, data.soil_adc_raw
-                    );
-                    data
-                }
-                Err(e) => {
-                    error!("Failed to read sensors: {}", e);
-                    Timer::after_millis(5000).await;
-                    continue;
-                }
-            };
+            let sensor_data =
+                match read_sensors(&mut pwm, &mut saadc, &mut led, packet_counter).await {
+                    Ok(data) => data,
+                    Err(e) => {
+                        error!("Failed to read sensors: {}", e);
+                        Timer::after_millis(5000).await;
+                        continue;
+                    }
+                };
 
             // Prepare BLE advertisement data
             let payload = sensor_data.to_ble_payload();
@@ -293,7 +295,10 @@ async fn main(spawner: Spawner) {
                 &[
                     AdStructure::CompleteLocalName(b"prst"),
                     AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-                    AdStructure::ServiceData16 { uuid: [0xD2, 0xFC], data: &payload }, // BTHome service UUID (little endian)
+                    AdStructure::ServiceData16 {
+                        uuid: [0xD2, 0xFC],
+                        data: &payload,
+                    }, // BTHome service UUID (little endian)
                 ],
                 &mut adv_data[..],
             )
