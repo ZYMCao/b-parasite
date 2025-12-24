@@ -46,36 +46,91 @@ fn build_sdc<'d, const N: usize>(
 #[derive(Clone, Copy, Format)]
 struct SensorData {
     battery_voltage_mv: u16,
+    battery_percentage: u8,
     soil_adc_raw: u16,
+    soil_percentage: u8,
+    temperature_centicelsius: i16,
+    humidity_percentage: u8,
+    illuminance_lux: u32,
+    packet_counter: u8,
 }
 
 impl SensorData {
-    fn new(battery_voltage_mv: u16, soil_adc_raw: u16) -> Self {
+    fn new(battery_voltage_mv: u16, soil_adc_raw: u16, packet_counter: u8) -> Self {
+        // Calculate battery percentage (mock calculation - adjust based on your battery characteristics)
+        let battery_percentage = if battery_voltage_mv >= 3000 {
+            100
+        } else if battery_voltage_mv >= 2700 {
+            ((battery_voltage_mv - 2700) * 100) / 300
+        } else {
+            0
+        };
+
+        // Mock soil percentage (since we only have raw ADC)
+        let soil_percentage = if soil_adc_raw >= 500 {
+            100
+        } else if soil_adc_raw >= 100 {
+            ((soil_adc_raw - 100) * 100) / 400
+        } else {
+            0
+        };
+
+        // Mock temperature (25.0°C = 2500 centicelsius)
+        let temperature_centicelsius = 2500;
+
+        // Mock humidity (50%)
+        let humidity_percentage = 50;
+
+        // Mock illuminance (1000 lux)
+        let illuminance_lux = 1000;
+
         Self {
             battery_voltage_mv,
+            battery_percentage: battery_percentage as u8,
             soil_adc_raw,
+            soil_percentage: soil_percentage as u8,
+            temperature_centicelsius,
+            humidity_percentage,
+            illuminance_lux,
+            packet_counter,
         }
     }
 
-    fn to_ble_payload(&self) -> [u8; 9] {
-        // BTHome v2 format
+    fn to_ble_payload(&self) -> [u8; 17] {
+        // BTHome v2 format - matching C implementation exactly (without packet counter)
         // https://bthome.io/format/
-        let mut payload = [0u8; 9];
+        let mut payload = [0u8; 17];
 
-        // BTHome header: device ID, encryption, etc.
+        // BTHome header: version 2, no encryption
         payload[0] = 0x40; // BTHome v2, no encryption
 
-        // Battery voltage (object ID 0x0C, 2 bytes, little endian)
-        payload[1] = 0x0C; // Battery voltage object ID
-        payload[2] = 0x21; // Data format: uint16, little endian
-        payload[3] = (self.battery_voltage_mv & 0xFF) as u8;
-        payload[4] = ((self.battery_voltage_mv >> 8) & 0xFF) as u8;
+        // Battery percentage (Object ID: 0x01, uint8, factor 1, unit %)
+        payload[1] = 0x01;
+        payload[2] = self.battery_percentage;
 
-        // Soil moisture (object ID 0x2C, 2 bytes, little endian) - using raw ADC value
-        payload[5] = 0x2C; // Moisture object ID
-        payload[6] = 0x21; // Data format: uint16, little endian
-        payload[7] = (self.soil_adc_raw & 0xFF) as u8;
-        payload[8] = ((self.soil_adc_raw >> 8) & 0xFF) as u8;
+        // Temperature (Object ID: 0x02, int16, factor 0.01, unit °C)
+        payload[3] = 0x02;
+        payload[4] = (self.temperature_centicelsius & 0xFF) as u8;
+        payload[5] = ((self.temperature_centicelsius >> 8) & 0xFF) as u8;
+
+        // Illuminance (Object ID: 0x05, uint24, factor 0.01, unit lux)
+        payload[6] = 0x05;
+        payload[7] = (self.illuminance_lux & 0xFF) as u8;
+        payload[8] = ((self.illuminance_lux >> 8) & 0xFF) as u8;
+        payload[9] = ((self.illuminance_lux >> 16) & 0xFF) as u8;
+
+        // Battery voltage (Object ID: 0x0C, uint16, factor 0.001, unit V)
+        payload[10] = 0x0C;
+        payload[11] = (self.battery_voltage_mv & 0xFF) as u8;
+        payload[12] = ((self.battery_voltage_mv >> 8) & 0xFF) as u8;
+
+        // Humidity (Object ID: 0x2E, uint8, factor 1, unit %)
+        payload[13] = 0x2E;
+        payload[14] = self.humidity_percentage;
+
+        // Soil moisture (Object ID: 0x2F, uint8, factor 1, unit %)
+        payload[15] = 0x2F;
+        payload[16] = self.soil_percentage;
 
         payload
     }
@@ -85,6 +140,7 @@ async fn read_sensors(
     pwm: &mut SequencePwm<'_>,
     saadc: &mut Saadc<'_, 2>,
     led: &mut Output<'_>,
+    packet_counter: u8,
 ) -> Result<SensorData, &'static str> {
     // PWM sequences
     let compare_value = 16; // 50% duty cycle (32/2)
@@ -129,7 +185,7 @@ async fn read_sensors(
 
         led.set_low();
 
-        Ok(SensorData::new(battery_voltage_mv as u16, soil_raw as u16))
+        Ok(SensorData::new(battery_voltage_mv as u16, soil_raw as u16, packet_counter))
     }
 }
 
@@ -147,7 +203,7 @@ async fn main(spawner: Spawner) {
         skip_wait_lfclk_started: mpsl::raw::MPSL_DEFAULT_SKIP_WAIT_LFCLK_STARTED != 0,
     };
     static MPSL: StaticCell<MultiprotocolServiceLayer> = StaticCell::new();
-    let mpsl = MPSL.init(unwrap!(mpsl::MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg)));
+    let mpsl = MPSL.init(unwrap!(MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg)));
     spawner.must_spawn(mpsl_task(&*mpsl));
 
     // Initialize SDC (SoftDevice Controller)
@@ -161,7 +217,8 @@ async fn main(spawner: Spawner) {
     let sdc = unwrap!(build_sdc(sdc_p, &mut rng, &mpsl, &mut sdc_mem));
 
     // Initialize BLE Host
-    let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
+    // let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
+    let address: Address = Address::random([0xff, 0x00, 0x00, 0x00, 0x00, 0x01]);
     let addr_bytes = address.to_bytes();
     info!("Our address = {=[u8]:x}", addr_bytes);
 
@@ -208,9 +265,10 @@ async fn main(spawner: Spawner) {
 
     // Main loop - similar to original C code
     let _ = join(runner.run(), async {
+        let mut packet_counter: u8 = 0;
         loop {
             // Read sensors
-            let sensor_data = match read_sensors(&mut pwm, &mut saadc, &mut led).await {
+            let sensor_data = match read_sensors(&mut pwm, &mut saadc, &mut led, packet_counter).await {
                 Ok(data) => {
                     info!(
                         "Battery: {}mV, Soil ADC: {}",
@@ -227,12 +285,13 @@ async fn main(spawner: Spawner) {
 
             // Prepare BLE advertisement data
             let payload = sensor_data.to_ble_payload();
+            info!("Broadcast payload: {=[u8]:x}", payload);
 
             // Create advertisement data
             let mut adv_data = [0; 31];
             let len = AdStructure::encode_slice(
                 &[
-                    AdStructure::CompleteLocalName(b"B-Parasite"),
+                    AdStructure::CompleteLocalName(b"prst"),
                     AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
                     AdStructure::ServiceData16 { uuid: [0xD2, 0xFC], data: &payload }, // BTHome service UUID (little endian)
                 ],
@@ -268,6 +327,9 @@ async fn main(spawner: Spawner) {
                     error!("Failed to start advertising");
                 }
             }
+
+            // Increment packet counter for next cycle
+            packet_counter = packet_counter.wrapping_add(1);
 
             // Sleep before next cycle
             Timer::after_millis(7000).await; // Total 10 second cycle (3s adv + 7s sleep)
